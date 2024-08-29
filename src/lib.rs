@@ -11,8 +11,10 @@ use ash::{
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
 use swapchain::SwapchainSupportDetails;
+use vulkan_features::CheckRequiredFeatures;
 
 pub mod swapchain;
+pub mod vulkan_features;
 
 pub struct VulkanSurface {
     pub loader: Surface,
@@ -496,60 +498,38 @@ impl<'a> PhysicalDeviceSelector<'a> {
     }
 
     fn check_for_required_features(&self, device_features: vk::PhysicalDeviceFeatures) -> bool {
-        let criteria_features = self.criteria.features;
-        if criteria_features.geometry_shader == 1 && device_features.geometry_shader == 0 {
-            false
-        } else if criteria_features.sampler_anisotropy == 1
-            && device_features.sampler_anisotropy == 0
-        {
-            false
-        } else if criteria_features.alpha_to_one == 1 && device_features.alpha_to_one == 0 {
-            false
-        } else if criteria_features.depth_bias_clamp == 1 && device_features.depth_bias_clamp == 0 {
-            false
-        } else if criteria_features.depth_bounds == 1 && device_features.depth_bounds == 0 {
-            false
-        } else if criteria_features.depth_clamp == 1 && device_features.depth_clamp == 0 {
-            false
-        } else if criteria_features.draw_indirect_first_instance == 1
-            && device_features.draw_indirect_first_instance == 0
-        {
-            false
-        } else {
-            true
-        }
+        device_features.check_for_required_features(&self.criteria.features)
+        /*         let device_features =
+            PhysicalDeviceFeaturesDuplicated::from_duplicated_type(device_features);
+        let required_features =
+            PhysicalDeviceFeaturesDuplicated::from_duplicated_type(self.criteria.features);
+        device_features.check_for_required_features(&required_features) */
     }
 
     fn check_for_required_features_12(
         &self,
         device_features: vk::PhysicalDeviceVulkan12Features,
     ) -> bool {
-        let criteria_features = self.criteria.features12;
-        if criteria_features.buffer_device_address == 1
-            && device_features.buffer_device_address == 0
-        {
-            false
-        } else if criteria_features.descriptor_indexing == 1
-            && device_features.descriptor_indexing == 0
-        {
-            false
-        } else {
-            true
-        }
+        device_features.check_for_required_features(&self.criteria.features12)
+        /*  let device_features =
+            PhysicalDeviceVulkan12FeaturesDuplicated::from_duplicated_type(device_features);
+        let required_features = PhysicalDeviceVulkan12FeaturesDuplicated::from_duplicated_type(
+            self.criteria.features12,
+        );
+        device_features.check_for_required_features(&required_features) */
     }
 
     fn check_for_required_features_13(
         &self,
         device_features: vk::PhysicalDeviceVulkan13Features,
     ) -> bool {
-        let criteria_features = self.criteria.features13;
-        if criteria_features.dynamic_rendering == 1 && device_features.dynamic_rendering == 0 {
-            false
-        } else if criteria_features.synchronization2 == 1 && device_features.synchronization2 == 0 {
-            false
-        } else {
-            true
-        }
+        device_features.check_for_required_features(&self.criteria.features13)
+        /*         let device_features =
+            PhysicalDeviceVulkan13FeaturesDuplicated::from_duplicated_type(device_features);
+        let required_features = PhysicalDeviceVulkan13FeaturesDuplicated::from_duplicated_type(
+            self.criteria.features13,
+        );
+        device_features.check_for_required_features(&required_features) */
     }
 }
 
