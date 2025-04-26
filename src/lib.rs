@@ -1,12 +1,13 @@
 use std::{
-    ffi::{c_char, c_void, CStr, CString},
+    ffi::{CStr, CString, c_char, c_void},
     sync::Arc,
 };
 
 use ash::{
+    Entry,
     ext::debug_utils::{self},
     khr::surface::Instance as Surface,
-    vk, Entry,
+    vk,
 };
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 
@@ -274,8 +275,8 @@ pub struct PhysicalDeviceSelector<'a> {
 pub struct SelectionCriteria<'a> {
     required_extensions: Vec<CString>,
     features: vk::PhysicalDeviceFeatures,
-    features12: vk::PhysicalDeviceVulkan12Features<'a>,
-    features13: vk::PhysicalDeviceVulkan13Features<'a>,
+    features12: Option<vk::PhysicalDeviceVulkan12Features<'a>>,
+    features13: Option<vk::PhysicalDeviceVulkan13Features<'a>>,
 }
 
 impl SelectionCriteria<'_> {
@@ -283,8 +284,8 @@ impl SelectionCriteria<'_> {
         Self {
             required_extensions: vec![],
             features: vk::PhysicalDeviceFeatures::default(),
-            features12: vk::PhysicalDeviceVulkan12Features::default(),
-            features13: vk::PhysicalDeviceVulkan13Features::default(),
+            features12: None,
+            features13: None,
         }
     }
 }
@@ -312,7 +313,7 @@ impl<'a> PhysicalDeviceSelector<'a> {
         mut self,
         required_features: vk::PhysicalDeviceVulkan12Features<'a>,
     ) -> Self {
-        self.criteria.features12 = required_features;
+        self.criteria.features12 = Some(required_features);
         self
     }
 
@@ -320,7 +321,7 @@ impl<'a> PhysicalDeviceSelector<'a> {
         mut self,
         required_features: vk::PhysicalDeviceVulkan13Features<'a>,
     ) -> Self {
-        self.criteria.features13 = required_features;
+        self.criteria.features13 = Some(required_features);
         self
     }
 
@@ -413,16 +414,13 @@ impl<'a> PhysicalDeviceSelector<'a> {
             {
                 let msaa_samples = Self::get_max_usable_sample_count(physical_device_properties);
 
-                Some((
-                    score,
-                    BootstrapPhysicalDevice {
-                        physical_device: *device,
-                        physical_device_properties,
-                        swapchain_support_details,
-                        queue_family_indices,
-                        max_sample_count: msaa_samples,
-                    },
-                ))
+                Some((score, BootstrapPhysicalDevice {
+                    physical_device: *device,
+                    physical_device_properties,
+                    swapchain_support_details,
+                    queue_family_indices,
+                    max_sample_count: msaa_samples,
+                }))
             } else {
                 println!(
                     "failed to find swapchain format or present mode on physical device! {}",
@@ -499,37 +497,28 @@ impl<'a> PhysicalDeviceSelector<'a> {
 
     fn check_for_required_features(&self, device_features: vk::PhysicalDeviceFeatures) -> bool {
         device_features.check_for_required_features(&self.criteria.features)
-        /*         let device_features =
-            PhysicalDeviceFeaturesDuplicated::from_duplicated_type(device_features);
-        let required_features =
-            PhysicalDeviceFeaturesDuplicated::from_duplicated_type(self.criteria.features);
-        device_features.check_for_required_features(&required_features) */
     }
 
     fn check_for_required_features_12(
         &self,
         device_features: vk::PhysicalDeviceVulkan12Features,
     ) -> bool {
-        device_features.check_for_required_features(&self.criteria.features12)
-        /*  let device_features =
-            PhysicalDeviceVulkan12FeaturesDuplicated::from_duplicated_type(device_features);
-        let required_features = PhysicalDeviceVulkan12FeaturesDuplicated::from_duplicated_type(
-            self.criteria.features12,
-        );
-        device_features.check_for_required_features(&required_features) */
+        if let Some(features12) = &self.criteria.features12 {
+            device_features.check_for_required_features(features12)
+        } else {
+            true
+        }
     }
 
     fn check_for_required_features_13(
         &self,
         device_features: vk::PhysicalDeviceVulkan13Features,
     ) -> bool {
-        device_features.check_for_required_features(&self.criteria.features13)
-        /*         let device_features =
-            PhysicalDeviceVulkan13FeaturesDuplicated::from_duplicated_type(device_features);
-        let required_features = PhysicalDeviceVulkan13FeaturesDuplicated::from_duplicated_type(
-            self.criteria.features13,
-        );
-        device_features.check_for_required_features(&required_features) */
+        if let Some(features13) = &self.criteria.features13 {
+            device_features.check_for_required_features(features13)
+        } else {
+            true
+        }
     }
 }
 
@@ -554,8 +543,8 @@ impl LogicalDevice {
         queue_family_indices: &QueueFamilyIndices,
         required_extensions: Vec<CString>,
         device_features: vk::PhysicalDeviceFeatures,
-        mut device_features12: vk::PhysicalDeviceVulkan12Features,
-        mut device_features13: vk::PhysicalDeviceVulkan13Features,
+        mut device_create_info_ext: Vec<Box<dyn vk::ExtendsDeviceCreateInfo>>,
+        flags: vk::DeviceCreateFlags,
     ) -> std::result::Result<Arc<LogicalDevice>, ash::vk::Result> {
         let queue_create_infos = if queue_family_indices.transfer_family.is_some() {
             vec![
@@ -577,12 +566,14 @@ impl LogicalDevice {
             .iter()
             .map(|ext| ext.as_ptr())
             .collect::<Vec<_>>();
-        let device_create_info = vk::DeviceCreateInfo::default()
+        let mut device_create_info = vk::DeviceCreateInfo::default()
             .queue_create_infos(&queue_create_infos)
             .enabled_features(&device_features)
             .enabled_extension_names(&device_extension_names_raw)
-            .push_next(&mut device_features12)
-            .push_next(&mut device_features13);
+            .flags(flags);
+        for ext in &mut device_create_info_ext {
+            device_create_info = device_create_info.push_next(ext.as_mut());
+        }
 
         let device_result = unsafe {
             instance
